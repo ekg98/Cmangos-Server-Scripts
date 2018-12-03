@@ -1,0 +1,15 @@
+[Unit]
+Description=Wow Cmangos Realm Server
+Requires=mysql.service
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=mangos
+WorkingDirectory=/home/mangos/mangos/run/bin
+ExecStart=/home/mangos/mangos/run/bin/realmd -c /home/mangos/mangos/run/etc/realmd.conf
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

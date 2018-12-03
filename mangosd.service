@@ -1,0 +1,17 @@
+[Unit]
+Description=Wow Cmangos Server
+Requires=realmd.service mysql.service
+After=network.target mysql.service realmd.service
+
+[Service]
+Type=simple
+User=mangostbc
+WorkingDirectory=/home/mangos/mangos/run/bin
+ExecStart=/home/mangos/mangos/run/bin/mangosd -c /home/mangos/mangos/run/etc/mangosd.conf
+Restart=on-failure
+RestartSec=30
+StandardInput=tty-force
+TTYPath=/dev/tty4
+
+[Install]
+WantedBy=multi-user.target
