@@ -1,0 +1,67 @@
+#!/bin/bash
+
+# CMangos backup V 0.10 by ekg98
+# This is a simple script that will backup Cmangos Wow server at the command line 
+
+# copy this file into /usr/bin
+
+
+# Configuration variables. Adjust for your installation. ( Classic, Tbc, Wotlk )
+ServerType="Classic"
+ServerPath="/home/mangos/mangos"
+ServerDirectoryName="mangos"
+
+#Get the status of the server
+MangosdStatus=$(systemctl is-active mangosd.service)
+RealmdStatus=$(systemctl is-active realmd.service)
+
+# Create variables to facilitate the output file name
+CurrentDay=$(date +%d)
+CurrentMonth=$(date +%b | tr [a-z] [A-Z])
+CurrentYear=$(date +%Y)
+CurrentTime=$(date +%H%M)
+OutputName="Mangos""$ServerType""Bak""$CurrentDay""$CurrentMonth""$CurrentYear""_""$CurrentTime"
+
+# Determine if server is shutdown
+if [ "$MangosdStatus" = "active" ] ; then
+	echo -e "\nStopping mangosd"
+	sudo systemctl stop mangosd.service
+fi
+
+if [ "$RealmdStatus" = "active" ] ; then
+	echo -e "Stopping realmd\n"
+	sudo systemctl stop realmd.service
+fi
+
+# Backup the server directory
+
+if [ -f ""$PWD"/"$OutputName".tar.gz" ] ; then
+	echo -e ""$OutputName".tar.gz exists please delete.\n" 
+else
+	echo -e "Backing up Cmangos server at $ServerPath.\n"
+	cd $ServerPath/..
+	tar -czf $OutputName.tar.gz ${ServerPath##*/}
+	mv $OutputName.tar.gz $OLDPWD
+	cd $OLDPWD
+fi
+
+#Display a message stating what was done
+
+if [ -f ""$PWD"/"$OutputName".tar.gz" ] ; then
+	echo -e "Created "$OutputName".tar.gz in directory $PWD.\n"
+fi
+
+# if mangosd and realmd was running on program start restart them
+if [ "$RealmdStatus" = "active" ] ; then
+	echo -e "\nStarting realmd."
+	sudo systemctl start realmd.service
+else
+	echo -e "realmd was not running - not restarting.\n"
+fi
+
+if [ "$MangosdStatus" = "active" ] ; then
+	echo -e "Starting mangosd.\n"
+	sudo systemctl start mangosd.service
+else
+	echo -e "mangosd was not running - not restarting.\n"
+fi

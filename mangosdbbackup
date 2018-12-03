@@ -1,0 +1,88 @@
+#!/bin/bash
+
+# Cmangos Database backup V 0.15 by ekg98
+# This is a simple script that will backup Cmangos Wow server databases from one command at the command line 
+
+# Copy this file into /usr/bin
+
+# Configuration options.  Adjust for your installation.
+# User and password
+MysqlUser="mangos"
+MysqlPassword="mangos"
+
+# Database Names
+RealmDB="realmd"
+CharactersDB="characters"
+MangosDB="mangos"
+
+# Output Files
+RealmDBOutputFile="realmd.sql"
+CharactersDBOutputFile="characters.sql"
+MangosDBOutputFile="mangos.sql"
+
+# Classic, Tbc, Wotlk
+ServerType="Tbc"
+
+
+#Get the status of the server
+MangosdStatus=$(systemctl is-active mangosd.service)
+RealmdStatus=$(systemctl is-active realmd.service)
+
+# Create variables to facilitate the output file name
+CurrentDay=$(date +%d)
+CurrentMonth=$(date +%b | tr [a-z] [A-Z])
+CurrentYear=$(date +%Y)
+CurrentTime=$(date +%H%M)
+OutputName="Mangos""$ServerType""DBBak""$CurrentDay""$CurrentMonth""$CurrentYear""_""$CurrentTime"
+OutputDir="dbtmpbak""$CurrentTime"
+
+# Determine if server is shutdown
+if [ "$MangosdStatus" = "active" ] ; then
+	echo -e "\nStopping mangosd"
+	sudo systemctl stop mangosd.service
+fi
+
+if [ "$RealmdStatus" = "active" ] ; then
+	echo -e "Stopping realmd\n"
+	sudo systemctl stop realmd.service
+fi
+
+# Create a temporary directory to dump databases into then dump them.
+echo -e "\nBacking up $RealmDB, $CharactersDB, and $MangosDB.\n"
+
+
+if [ -d ""$PWD"/"$OutputDir"" ] ; then
+	echo -e "Cannot backup databases.  Please delete $OutputDir.\n"	
+else
+	mkdir "$PWD"/"$OutputDir"
+	mysqldump -u"$MysqlUser" -p"$MysqlPassword" "$RealmDB" > "$PWD"/"$OutputDir"/"$RealmDBOutputFile"
+	mysqldump -u"$MysqlUser" -p"$MysqlPassword" "$CharactersDB" > "$PWD"/"$OutputDir"/"$CharactersDBOutputFile"
+	mysqldump -u"$MysqlUser" -p"$MysqlPassword" "$MangosDB" > "$PWD"/"$OutputDir"/"$MangosDBOutputFile"
+	cd "$PWD"/"$OutputDir" 
+	sha256sum "$RealmDBOutputFile" "$CharactersDBOutputFile" "$MangosDBOutputFile" > "$OutputName".sha256
+	tar -czf "$OutputName".tar.gz "$RealmDBOutputFile" "$CharactersDBOutputFile" "$MangosDBOutputFile" "$OutputName".sha256
+	mv "$OutputName".tar.gz ..
+	cd ..
+	rm -r "$PWD"/"$OutputDir"
+fi
+
+# Display a message stating what was done
+
+if [ -f ""$PWD"/"$OutputName".tar.gz" ] ; then
+	echo -e "Created "$OutputName".tar.gz in directory $PWD.\n"
+fi
+
+# if mangosd and realmd was running on program start restart them
+if [ "$RealmdStatus" = "active" ] ; then
+	echo -e "\nStarting realmd."
+	sudo systemctl start realmd.service
+else
+	echo -e "realmd was not running - not restarting.\n"
+fi
+
+if [ "$MangosdStatus" = "active" ] ; then
+	echo -e "Starting mangosd.\n"
+	sudo systemctl start mangosd.service
+else
+	echo -e "mangosd was not running - not restarting.\n"
+fi
