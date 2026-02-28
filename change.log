@@ -1,6 +1,7 @@
 change.log - Documented changes in Cmangos-Server-Scripts
 
 mangosdbbkcron:
+	V0.11 - Bug fix: If NFS is not online program would just exit and do nothing.
 	V0.10 - Initial public release.
 
 mangosbackup:

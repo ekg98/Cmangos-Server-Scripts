@@ -1,17 +1,17 @@
 #!/bin/bash
 
-# CMangos Cron Database backup V 0.1 by ekg98
+# CMangos Cron Database backup V 0.11 by ekg98
 # This is a program to remotely deposit Cmangos backups to a NFS server. 
 
 # INSTALLATION DIRECTIONS
 # Copy this file to /usr/bin
-# Add mangosdbbkcron to your crontab.
+# Add mangosdbbkcron to your crontab with the included crontab.add example.
 # Create the mount points on your server machine so the script can work
 
 # command can be executed without cron
 
-# Configuration options.  Adjust for your installation.
-
+###################################################################################################
+# User configuration options.  Please adjust for your installation.
 
 # User and password
 MysqlUser="mangos"
@@ -31,14 +31,15 @@ MangosDBOutputFile="mangos.sql"
 ServerType="Classic"
 
 # NFS Server Configuration
+# NFSEnable - 1 turns on NFS backup 0 turns off NFS backup
 # NFSAddress - IP address of your NFS server
 # NFSPath - path on the remote nfs that you are mounting (backup location mount point)
 # NFSMountPath - local directory on your cmangos server you are mounting to access the nfs
+# UserID and GroupID of permissions on the NFS.
+NFSEnable="1"
 NFSAddress="0.0.0.0"
 NFSPath="/home/remotemachinelocation"
 NFSMountPath="/mnt/cmangosbackup"
-
-# Uid and Gid of permissions on the NFS.
 NFSUid="1000"
 NFSGid="1000"
 
@@ -53,6 +54,8 @@ LocalFileLocation="/home/mangosbackuplocation/"
 # Location to make the tarball and temporary directories
 DBBuildLocation="/root"
 
+# End of user configuration.
+###################################################################################################
 
 
 # Get the status of the server.  
@@ -68,27 +71,33 @@ CurrentTime=$(date +%H%M)
 OutputName="Mangos""$ServerType""DBBak""$CurrentDay""$CurrentMonth""$CurrentYear""_""$CurrentTime"
 OutputDir="dbtmpbak""$CurrentTime"
 
-# Misc Variables
-NFSIsMounted="0"
+# Header for logs.
+echo -e "mangosdbbkcron V0.11 : "$CurrentDay""$CurrentMonth""$CurrentYear""$CurrentTime" :\n"
 
-# Determine if NFS is online.  Ping for 10 seconds.
-ping -q -w 10 "$NFSAddress"
-if [ $? != 0 ] ; then
-	echo -e "Server at "$NFSAddress" unreachable. Exiting...\n"
-	exit 1
-else
-	echo -e "Possible NFS found at "$NFSAddress".  Connecting...\n"
-	mount "$NFSAddress":"$NFSPath" "$NFSMountPath"
-	
+
+# NFS connection code 
+if [ "$NFSEnable" = 1 ] ; then
+	# Ping the NFS for 10 seconds to determine if its online.
+	ping -q -w 10 "$NFSAddress"
+
 	if [ $? != 0 ] ; then
-		echo -e "Cannot mount NFS at "$NFSAddress".  Check script config or server connection.\n"
-		exit 1
+		echo -e "Server at "$NFSAddress" unreachable. Skipping...\n"
+		NFSIsMounted="0"
 	else
-		echo -e "NFS at "$NFSAddress" mounted locally at "$NFSMountPath".\n" 
-		NFSIsMounted="1"
+		echo -e "Possible NFS found at "$NFSAddress".  Trying to connect...\n"
+		mount "$NFSAddress":"$NFSPath" "$NFSMountPath"
+	
+		if [ $? != 0 ] ; then
+			echo -e "Error: Cannot mount NFS at "$NFSAddress".  Check script config or server connection.\n"
+			NFSIsMounted="0"
+		else
+			echo -e "NFS at "$NFSAddress" mounted locally at "$NFSMountPath".\n" 
+			NFSIsMounted="1"
+		fi
 	fi
+else
+	NFSIsMounted="0"
 fi
-
 
 
 # Determine if server is shutdown
@@ -125,7 +134,11 @@ fi
 
 # Copy to the NFS
 chown "$NFSUid":"$NFSGid" "$OutputName".tar.gz
-cp --preserve "$OutputName".tar.gz "$NFSFileLocation"
+
+if [ "$NFSIsMounted" = 1 ] ; then
+	cp --preserve "$OutputName".tar.gz "$NFSFileLocation"
+fi
+
 cp --preserve "$OutputName".tar.gz "$LocalFileLocation"
 rm "$OutputName".tar.gz
 
