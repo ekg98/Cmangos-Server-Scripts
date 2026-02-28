@@ -1,0 +1,2 @@
+# Cmangos-Server-Scripts crontab - change the timing as needed.  Currently set to perform backup at 4AM every night and log the results.
+0 4 * * * root mangosdbbkcron >> /var/log/mangosdbbkcron/mangosdbbkcron.log
