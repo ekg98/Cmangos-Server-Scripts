@@ -1,0 +1,10 @@
+change.log - Documented changes in Cmangos-Server-Scripts
+
+mangosdbbkcron:
+	V0.10 - Initial public release.
+
+mangosbackup:
+	V0.10 - Initial public release.
+
+mangosdbbackup:
+	V0.15 - Initial public release.
