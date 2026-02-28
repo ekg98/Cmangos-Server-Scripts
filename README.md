@@ -3,8 +3,9 @@ Cmangos serverside scripts for backing up and running a cmangos server.
 
 These were made for my HP DL380G6 running Ubuntu Server 16.04.5 LTS.  They should work just fine on any linux system that uses systemd.
 
- Don't laugh.  These are functional but not perfect.  They do NOT check for hard drive free space.  When your using cron they will keep operating until hard drive is full.  Beforwarned...
-
+# IMPORTANT NOTE #
+These are functional but not perfect.  They do NOT check for hard drive free space.  When your using cron they will keep operating until hard drive is full.  Beforwarned...
+# IMPORTANT NOTE #
 
   //The scripts:
 
@@ -18,7 +19,7 @@ mangosdbbkcron - Backup database script that will generate a tar.gz the same as 
   // Installation directions for backup scripts.
 1) Adjust each backup scripts configuration variables.  This is important.
 2) Place bash files in /usr/bin so they are executable by just typing the command.
-3) Add mangosdbbkcron to your crontab at the time and frequency you require.  This script should work if no NFS is available.
+3) Append crontab.add to your crontab at the time and frequency you require.
 
 
   // To control cmangos with systemd and have it automatically startup and shutdown
@@ -27,7 +28,7 @@ mangosdbbkcron - Backup database script that will generate a tar.gz the same as 
 3) sudo systemctl enable mangosd.service
 4) sudo systemctl start mangosd.service
 
-The same for realmd.service.
+Repeat for realmd.service.
 
 Good luck...
 ekg98
