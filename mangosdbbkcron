@@ -31,11 +31,11 @@ MangosDBOutputFile="mangos.sql"
 ServerType="Classic"
 
 # NFS Server Configuration
-# NFSEnable - 1 turns on NFS backup 0 turns off NFS backup
-# NFSAddress - IP address of your NFS server
+# NFSEnable - 1 turns on NFS backup 0 turns off NFS backup.
+# NFSAddress - IP address of your NFS server.
 # NFSPath - path on the remote nfs that you are mounting (backup location mount point)
-# NFSMountPath - local directory on your cmangos server you are mounting to access the nfs
-# UserID and GroupID of permissions on the NFS.
+# NFSMountPath - local directory on your cmangos server you are mounting to access the nfs.
+# UserID and GroupID of permissions on the NFS.  Script will change owners from root to this.
 NFSEnable="1"
 NFSAddress="0.0.0.0"
 NFSPath="/home/remotemachinelocation"
@@ -43,7 +43,13 @@ NFSMountPath="/mnt/cmangosbackup"
 NFSUid="1000"
 NFSGid="1000"
 
-# Where are we placing the files on the servers
+# Local storage settings.
+# LocalEnable - 1 turns on local storage 0 turns off local storage.
+# LocalUser - Username of the owner of the LocalFileLocation
+LocalEnable="1"
+LocalUser="mangosclassic"
+
+# Where are we placing the files on the servers.
 # NFSFileLocation - full remote storage path.  Usually subdir from NFSPath.
 #		  - Different from NFSPath incase your backup up from multiple core installations.
 #
@@ -96,6 +102,7 @@ if [ "$NFSEnable" = 1 ] ; then
 		fi
 	fi
 else
+	echo -e "NFS Storage Disabled.\n"
 	NFSIsMounted="0"
 fi
 
@@ -133,14 +140,22 @@ else
 fi
 
 # Copy to the NFS
-chown "$NFSUid":"$NFSGid" "$OutputName".tar.gz
-
 if [ "$NFSIsMounted" = 1 ] ; then
+	chown "$NFSUid":"$NFSGid" "$OutputName".tar.gz
 	cp --preserve "$OutputName".tar.gz "$NFSFileLocation"
 fi
 
-cp --preserve "$OutputName".tar.gz "$LocalFileLocation"
+# Copy to local
+if [ "$LocalEnable" = 1 ] ; then
+	chown "$LocalUser":"$LocalUser" "$OutputName".tar.gz
+	cp --preserve "$OutputName".tar.gz "$LocalFileLocation"
+else
+	echo -e "Local Storage Disabled\n"
+fi
+
+# Remove the temporary file from temporary build location
 rm "$OutputName".tar.gz
+
 
 # Display a message stating what was done
 
