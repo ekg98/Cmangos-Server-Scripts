@@ -1,0 +1,195 @@
+#!/bin/bash
+
+# CMangos Cron Database backup V 0.22 by ekg98
+# This is a program to deposit Cmangos backups locally and to a NFS. 
+#
+# Whats new in V 0.22
+# 	Updated to cmangos current standards
+
+###################################################################################################
+# Configuration Options
+###################################################################################################
+
+# User and password for mysql database
+MysqlUser="mangos"
+MysqlPassword="mangos"
+
+# Database Names
+RealmDB="tbcrealmd"
+CharactersDB="tbccharacters"
+MangosDB="tbcmangos"
+LogsDB="tbclogs"
+
+# Output File Names
+RealmDBOutputFile="realmd.sql"
+CharactersDBOutputFile="characters.sql"
+MangosDBOutputFile="mangos.sql"
+LogsDBOutputFile="logs.sql"
+
+# Classic, Tbc ,or Wotlk
+ServerType="Tbc"
+
+# NFS Server Configuration
+# NFSAddress		Address of NFS
+# NFSPath		Path on the NFS that will be mounted
+# NFSMountPath		Path on local machine where NFS will be mounted
+# NFSFileLocation	Path on local machine where NFS is mounted and files stored
+# NFSUid		NFS User ID
+# NFSGid		NFS Group ID
+NFSAddress="192.168.1.31"
+NFSPath="/Storage"
+NFSMountPath="/mnt/bakhard"
+NFSFileLocation="/mnt/bakhard/TbcBak/DB"
+NFSUid="1000"
+NFSGid="1000"
+
+# Local Storage Configuration
+# LocalFileLocaiton	Path where files will be backed up locally
+# LocalUid		Local User ID
+# LocalGid		Local Group ID
+LocalFileLocation="/home/mangostbc/DB"
+LocalUid="1000"
+LocalGid="1000"
+
+# Temporary location to make the tarball and temporary directories
+DBBuildLocation="/root"
+
+# END of Configuration
+###################################################################################################
+
+# Get the status of the server.  
+MangosdStatus=$(systemctl is-active mangosd.service)
+RealmdStatus=$(systemctl is-active realmd.service)
+
+# Create variables to facilitate the output file name
+CurrentDay=$(date +%d)
+CurrentMonth=$(date +%b | tr a-z A-Z)
+CurrentYear=$(date +%Y)
+CurrentTime=$(date +%H%M)
+OutputName="$ServerType""Mangos""DBBak""$CurrentDay""$CurrentMonth""$CurrentYear""_""$CurrentTime"
+OutputDir="dbtmpbak""$CurrentTime"
+
+# Misc Variables
+NFSIsMounted="0"
+
+# Header Date
+echo -e "\nStart: "$CurrentDay""$CurrentMonth""$CurrentYear" "$CurrentTime"\n"
+
+# Determine if NFS is online.  Ping for 10 seconds.
+ping -q -w 10 "$NFSAddress"
+if [ $? != 0 ] ; then
+	echo -e "Server at "$NFSAddress" unreachable. Exiting...\n"
+	exit 1
+else
+	echo -e "Possible NFS found at "$NFSAddress".  Connecting...\n"
+	mount "$NFSAddress":"$NFSPath" "$NFSMountPath"
+	
+	if [ $? != 0 ] ; then
+		echo -e "Cannot mount NFS at "$NFSAddress".  Check script config or server connection.\n"
+		exit 1
+	else
+		echo -e "NFS at "$NFSAddress" mounted locally at "$NFSMountPath".\n" 
+		NFSIsMounted="1"
+	fi
+fi
+
+
+
+# Determine if server is shutdown
+if [ "$MangosdStatus" = "active" ] ; then
+	echo -e "\nStopping mangosd"
+	sudo systemctl stop mangosd.service
+fi
+
+if [ "$RealmdStatus" = "active" ] ; then
+	echo -e "Stopping realmd\n"
+	sudo systemctl stop realmd.service
+fi
+
+# Create a temporary directory to dump databases into then dump them.
+echo -e "Backing up $RealmDB, $CharactersDB, $MangosDB, and $LogsDB.\n"
+
+# Change Directory
+cd "$DBBuildLocation"
+
+
+# Create the backup tar
+if [ -d ""$PWD"/"$OutputDir"" ] ; then
+	echo -e "Cannot backup databases.  Please delete $OutputDir.\n"	
+else
+	mkdir "$PWD"/"$OutputDir"
+	mysqldump -u"$MysqlUser" -p"$MysqlPassword" "$RealmDB" > "$PWD"/"$OutputDir"/"$RealmDBOutputFile"
+	mysqldump -u"$MysqlUser" -p"$MysqlPassword" "$CharactersDB" > "$PWD"/"$OutputDir"/"$CharactersDBOutputFile"
+	mysqldump -u"$MysqlUser" -p"$MysqlPassword" "$MangosDB" > "$PWD"/"$OutputDir"/"$MangosDBOutputFile"
+	mysqldump -u"$MysqlUser" -p"$MysqlPassword" "$LogsDB" > "$PWD"/"$OutputDir"/"$LogsDBOutputFile"
+	cd "$PWD"/"$OutputDir" 
+	sha256sum "$RealmDBOutputFile" "$CharactersDBOutputFile" "$MangosDBOutputFile" "$LogsDBOutputFile" > "$OutputName".sha256
+	cd ..
+	chown -R "$LocalUid":"$LocalGid" "$OutputDir"
+	cd "$OutputDir"
+	tar -czf "$OutputName".tar.gz "$RealmDBOutputFile" "$CharactersDBOutputFile" "$MangosDBOutputFile" "$LogsDBOutputFile" "$OutputName".sha256
+	mv "$OutputName".tar.gz ..
+	cd ..
+	rm -r "$PWD"/"$OutputDir"
+fi
+
+# Determine if local organizational directory structure exists.  Copy file if exists.
+if [ -d ""$LocalFileLocation"/"$CurrentMonth""$CurrentYear"" ] ; then
+	echo -e "Backing up "$OutputName".tar.gz to "$LocalFileLocation"\n"
+	chown "$LocalUid":"$LocalGid" "$OutputName".tar.gz
+	cp --preserve "$OutputName".tar.gz "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"
+else
+	mkdir -p "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"
+	if [ $? = 0 ] ; then
+		echo -e "Created local directory "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"\n"
+		chown "$LocalUid":"$LocalGid" "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"
+		chown "$LocalUid":"$LocalGid" "$OutputName".tar.gz
+		cp --preserve "$OutputName".tar.gz "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"
+	else
+		echo -e "Could not create local directory.\n"
+	fi
+fi
+ 
+# Determine if NFS organizational directory structure exists.  Copy file if exists.
+if [ -d ""$NFSFileLocation"/"$CurrentMonth""$CurrentYear"" ] ; then
+	echo -e "Backing up "$OutputName".tar.gz to "$NFSFileLocation"\n"
+	chown "$NFSUid":"$NFSGid" "$OutputName".tar.gz
+	cp --preserve "$OutputName".tar.gz "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"
+else
+	mkdir -p "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"
+	if [ $? = 0 ] ; then
+		echo -e "Created NFS directory "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"\n"
+		chown "$NFSUid":"$NFSGid" "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"
+		chown "$NFSUid":"$NFSGid" "$OutputName".tar.gz
+		cp --preserve "$OutputName".tar.gz "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"
+	else
+		echo -e "Could not create NFS directory.\n"
+	fi
+fi
+
+# Remove the created file from root
+rm "$OutputName".tar.gz
+
+# if mangosd and realmd was running on program start restart them
+if [ "$RealmdStatus" = "active" ] ; then
+	echo -e "\nStarting realmd."
+	sudo systemctl start realmd.service
+else
+	echo -e "realmd was not running - not restarting.\n"
+fi
+
+if [ "$MangosdStatus" = "active" ] ; then
+	echo -e "Starting mangosd.\n"
+	sudo systemctl start mangosd.service
+else
+	echo -e "mangosd was not running - not restarting.\n"
+fi
+
+# Unmounted the NFS if it is mounted
+if [ "$NFSIsMounted" = 1 ] ; then
+	echo -e "Unmounting NFS at "$NFSAddress".\n"
+	umount "$NFSMountPath"
+fi
+
+# Footer Date
+echo -e "End: "$CurrentDay""$CurrentMonth""$CurrentYear" "$CurrentTime"\n"

@@ -19,6 +19,7 @@ mangosdbbkcron - Backup database script that will generate a tar.gz the same as 
   // Installation directions for backup scripts.
 1) Adjust each backup scripts configuration variables.  This is important.
 2) Place bash files in /usr/bin so they are executable by just typing the command.
+3) Make sure /var/log/mangosdbbkcron directory is created.
 3) Append crontab.add to your crontab at the time and frequency you require.
 
 
