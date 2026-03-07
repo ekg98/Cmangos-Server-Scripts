@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# CMangos Cron Database backup V 0.22 by ekg98
+# CMangos Cron Database backup V 0.24 by ekg98
 # This is a program to deposit Cmangos backups locally and to a NFS. 
 #
 # Whats new in V 0.24
