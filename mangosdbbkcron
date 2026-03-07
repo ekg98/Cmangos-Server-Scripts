@@ -3,8 +3,8 @@
 # CMangos Cron Database backup V 0.22 by ekg98
 # This is a program to deposit Cmangos backups locally and to a NFS. 
 #
-# Whats new in V 0.23
-# 	Updated configuration variable clarity
+# Whats new in V 0.24
+# 	Fixed bug related to NFS connection.
 
 ###################################################################################################
 # Configuration Options
@@ -73,30 +73,37 @@ CurrentTime=$(date +%H%M)
 OutputName="$ServerType""Mangos""DBBak""$CurrentDay""$CurrentMonth""$CurrentYear""_""$CurrentTime"
 OutputDir="dbtmpbak""$CurrentTime"
 
-# Misc Variables
+# Get hard disk space
+NFSFreeSpace=$(df --output=avail "$NFSFileLocation" | tail -1)
+LocalFreeSpace=$(df --output=avail "$LocalFileLocation" | tail -1)
+
+# Misc variable declaration 
 NFSIsMounted="0"
 
 # Header Date
 echo -e "\nStart: "$CurrentDay""$CurrentMonth""$CurrentYear" "$CurrentTime"\n"
 
 # Determine if NFS is online.  Ping for 10 seconds.
-ping -q -w 10 "$NFSAddress"
-if [ $? != 0 ] ; then
-	echo -e "Server at "$NFSAddress" unreachable. Exiting...\n"
-	exit 1
-else
-	echo -e "Possible NFS found at "$NFSAddress".  Connecting...\n"
-	mount "$NFSAddress":"$NFSRemoteMountPath" "$NFSLocalMountPath"
-	
+if [ "$NFSEnable" = 1 ] ; then
+	ping -q -w 10 "$NFSAddress"
 	if [ $? != 0 ] ; then
-		echo -e "Cannot mount NFS at "$NFSAddress".  Check script config or server connection.\n"
-		exit 1
+		echo -e "Server at "$NFSAddress" unreachable...\n"
+		NFSIsMounted="0"
 	else
-		echo -e "NFS at "$NFSAddress" mounted locally at "$NFSLocalMountPath".\n" 
-		NFSIsMounted="1"
+		echo -e "Possible NFS found at "$NFSAddress".  Connecting...\n"
+		mount "$NFSAddress":"$NFSRemoteMountPath" "$NFSLocalMountPath"
+	
+		if [ $? != 0 ] ; then
+			echo -e "Cannot mount NFS at "$NFSAddress".  Check script config or server connection.\n"
+			NFSIsMounted="0"
+		else
+			echo -e "NFS at "$NFSAddress" mounted locally at "$NFSLocalMountPath".\n" 
+			NFSIsMounted="1"
+		fi
 	fi
+else
+	NFSIsMounted="0"
 fi
-
 
 
 # Determine if server is shutdown
@@ -138,37 +145,45 @@ else
 fi
 
 # Determine if local organizational directory structure exists.  Copy file if exists.
-if [ -d ""$LocalFileLocation"/"$CurrentMonth""$CurrentYear"" ] ; then
-	echo -e "Backing up "$OutputName".tar.gz to "$LocalFileLocation"\n"
-	chown "$LocalUid":"$LocalGid" "$OutputName".tar.gz
-	cp --preserve "$OutputName".tar.gz "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"
-else
-	mkdir -p "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"
-	if [ $? = 0 ] ; then
-		echo -e "Created local directory "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"\n"
-		chown "$LocalUid":"$LocalGid" "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"
+if [ "$LocalEnable" = 1 ] ; then
+	if [ -d ""$LocalFileLocation"/"$CurrentMonth""$CurrentYear"" ] ; then
+		echo -e "Backing up "$OutputName".tar.gz to "$LocalFileLocation"\n"
 		chown "$LocalUid":"$LocalGid" "$OutputName".tar.gz
 		cp --preserve "$OutputName".tar.gz "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"
 	else
-		echo -e "Could not create local directory.\n"
+		mkdir -p "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"
+		if [ $? = 0 ] ; then
+			echo -e "Created local directory "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"\n"
+			chown "$LocalUid":"$LocalGid" "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"
+			chown "$LocalUid":"$LocalGid" "$OutputName".tar.gz
+			cp --preserve "$OutputName".tar.gz "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"
+		else
+			echo -e "Could not create local directory.\n"
+		fi
 	fi
-fi
- 
-# Determine if NFS organizational directory structure exists.  Copy file if exists.
-if [ -d ""$NFSFileLocation"/"$CurrentMonth""$CurrentYear"" ] ; then
-	echo -e "Backing up "$OutputName".tar.gz to "$NFSFileLocation"\n"
-	chown "$NFSUid":"$NFSGid" "$OutputName".tar.gz
-	cp --preserve "$OutputName".tar.gz "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"
 else
-	mkdir -p "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"
-	if [ $? = 0 ] ; then
-		echo -e "Created NFS directory "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"\n"
-		chown "$NFSUid":"$NFSGid" "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"
+	echo -e "Local backup disabled.\n"
+fi 
+
+# Determine if NFS organizational directory structure exists.  Copy file if exists.
+if [ "$NFSEnable" = 1 ] ; then
+	if [ -d ""$NFSFileLocation"/"$CurrentMonth""$CurrentYear"" ] ; then
+		echo -e "Backing up "$OutputName".tar.gz to "$NFSFileLocation"\n"
 		chown "$NFSUid":"$NFSGid" "$OutputName".tar.gz
 		cp --preserve "$OutputName".tar.gz "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"
 	else
-		echo -e "Could not create NFS directory.\n"
+		mkdir -p "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"
+		if [ $? = 0 ] ; then
+			echo -e "Created NFS directory "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"\n"
+			chown "$NFSUid":"$NFSGid" "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"
+			chown "$NFSUid":"$NFSGid" "$OutputName".tar.gz
+			cp --preserve "$OutputName".tar.gz "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"
+		else
+			echo -e "Could not create NFS directory.\n"
+		fi
 	fi
+else
+	echo -e "NFS backup disabled.\n"
 fi
 
 # Remove the created file from root
