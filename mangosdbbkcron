@@ -1,10 +1,11 @@
 #!/bin/bash
 
-# CMangos Cron Database backup V 0.24 by ekg98
+# CMangos Cron Database backup V 0.25 by ekg98
 # This is a program to deposit Cmangos backups locally and to a NFS. 
 #
-# Whats new in V 0.24
-# 	Fixed bug related to NFS connection.
+# Whats new in V 0.25
+# 	Update its now possible to enable or disable local or nfs backups.
+# 	Added free space requirements.
 
 ###################################################################################################
 # Configuration Options
@@ -31,6 +32,7 @@ ServerType="Tbc"
 
 # NFS Server Configuration
 # NFSEnable		Turns NFS backup on or off. 1 or 0
+# NFSSpaceLimit		NFS space size constraint in 1k byte chunks.  Leave this much free on disk
 # NFSAddress		Address of NFS
 # NFSRemoteMountPath	Path on remote machine where the NFS will be mounted
 # NFSLocalMountPath	Path on local machine where NFS will be mounted
@@ -38,6 +40,7 @@ ServerType="Tbc"
 # NFSUid		NFS User ID
 # NFSGid		NFS Group ID
 NFSEnable="1"
+NFSSpaceLimit="20000000"
 NFSAddress="192.168.1.31"
 NFSRemoteMountPath="/Storage"
 NFSLocalMountPath="/mnt/bakhard"
@@ -47,10 +50,12 @@ NFSGid="1000"
 
 # Local Storage Configuration
 # LocalEnable		Turns Local backup on or off. 1 or 0
+# LocalSpaceLimit	Local space size constraint in 1k byte chunks. Leave this much free on disk
 # LocalFileLocaiton	Path where files will be backed up locally
 # LocalUid		Local User ID
 # LocalGid		Local Group ID
 LocalEnable="1"
+LocalSpaceLimit="20000000"
 LocalFileLocation="/home/mangostbc/DB"
 LocalUid="1000"
 LocalGid="1000"
@@ -73,141 +78,171 @@ CurrentTime=$(date +%H%M)
 OutputName="$ServerType""Mangos""DBBak""$CurrentDay""$CurrentMonth""$CurrentYear""_""$CurrentTime"
 OutputDir="dbtmpbak""$CurrentTime"
 
-# Get hard disk space
-NFSFreeSpace=$(df --output=avail "$NFSFileLocation" | tail -1)
-LocalFreeSpace=$(df --output=avail "$LocalFileLocation" | tail -1)
-
 # Misc variable declaration 
 NFSIsMounted="0"
 
 # Header Date
 echo -e "\nStart: "$CurrentDay""$CurrentMonth""$CurrentYear" "$CurrentTime"\n"
 
-# Determine if NFS is online.  Ping for 10 seconds.
-if [ "$NFSEnable" = 1 ] ; then
-	ping -q -w 10 "$NFSAddress"
-	if [ $? != 0 ] ; then
-		echo -e "Server at "$NFSAddress" unreachable...\n"
-		NFSIsMounted="0"
-	else
-		echo -e "Possible NFS found at "$NFSAddress".  Connecting...\n"
-		mount "$NFSAddress":"$NFSRemoteMountPath" "$NFSLocalMountPath"
-	
+# Determine if we are doing any backup operations today.  If both LocalEnable and NFSEnable are false then we just don't have do to anything.
+if [ "$LocalEnable" = 1 ] || [ "$NFSEnable" = 1 ] ; then
+
+	# Determine if NFS is online.  Ping for 10 seconds.
+	if [ "$NFSEnable" = 1 ] ; then
+		ping -q -w 10 "$NFSAddress"
 		if [ $? != 0 ] ; then
-			echo -e "Cannot mount NFS at "$NFSAddress".  Check script config or server connection.\n"
+			echo -e "Server at "$NFSAddress" unreachable...\n"
 			NFSIsMounted="0"
 		else
-			echo -e "NFS at "$NFSAddress" mounted locally at "$NFSLocalMountPath".\n" 
-			NFSIsMounted="1"
+			echo -e "Possible NFS found at "$NFSAddress".  Connecting...\n"
+			mount "$NFSAddress":"$NFSRemoteMountPath" "$NFSLocalMountPath"
+	
+			if [ $? != 0 ] ; then
+				echo -e "Cannot mount NFS at "$NFSAddress".  Check script config or server connection.\n"
+				NFSIsMounted="0"
+			else
+				echo -e "NFS at "$NFSAddress" mounted locally at "$NFSLocalMountPath".\n" 
+				NFSIsMounted="1"
+			fi
+		fi
+	else
+		NFSIsMounted="0"
+	fi
+
+	# Get free disk space on the NFS
+	if [ "$NFSEnable" = 1 ] && [ "$NFSIsMounted" = 1 ] ; then
+		NFSFreeSpace=$(df --output=avail "$NFSFileLocation" | tail -1)
+	fi
+
+	# Get free disk space on Local
+	if [ "$LocalEnable" = 1 ] ; then
+		LocalFreeSpace=$(df --output=avail "$LocalFileLocation" | tail -1)
+	fi
+
+	# Check NFS free space vs the limit
+	if [ "$NFSEnable" = 1 ] ; then
+		echo -e "NFS free space: $NFSFreeSpace\tNFS space limit: $NFSSpaceLimit\n"
+		if (( NFSFreeSpace <= NFSSpaceLimit )) ; then
+			NFSEnable="0"
+			echo -e "NFS free space limit reached.  Please free more space for backup.\n"
 		fi
 	fi
-else
-	NFSIsMounted="0"
-fi
+	# Check Local free space vs the limit
+	if [ "$LocalEnable" = 1 ] ; then
+		echo -e "Local free space: $LocalFreeSpace\tLocal space limit: $LocalSpaceLimit\n"
+		if (( LocalFreeSpace <= LocalSpaceLimit )) ; then
+			LocalEnable="0"
+			echo -e "Local free space limit reached.  Please free more space for backup.\n"
+		fi
+	fi
+
+	# Determine if server is shutdown
+	if [ "$MangosdStatus" = "active" ] ; then
+		echo -e "\nStopping mangosd"
+		sudo systemctl stop mangosd.service
+	fi
+
+	if [ "$RealmdStatus" = "active" ] ; then
+		echo -e "Stopping realmd\n"
+		sudo systemctl stop realmd.service
+	fi
+
+	# Create a temporary directory to dump databases into then dump them.
+	echo -e "Backing up $RealmDB, $CharactersDB, $MangosDB, and $LogsDB.\n"
+
+	# Change Directory
+	cd "$DBBuildLocation"
 
 
-# Determine if server is shutdown
-if [ "$MangosdStatus" = "active" ] ; then
-	echo -e "\nStopping mangosd"
-	sudo systemctl stop mangosd.service
-fi
+	# Create the backup tar
+	if [ -d ""$PWD"/"$OutputDir"" ] ; then
 
-if [ "$RealmdStatus" = "active" ] ; then
-	echo -e "Stopping realmd\n"
-	sudo systemctl stop realmd.service
-fi
-
-# Create a temporary directory to dump databases into then dump them.
-echo -e "Backing up $RealmDB, $CharactersDB, $MangosDB, and $LogsDB.\n"
-
-# Change Directory
-cd "$DBBuildLocation"
-
-
-# Create the backup tar
-if [ -d ""$PWD"/"$OutputDir"" ] ; then
-	echo -e "Cannot backup databases.  Please delete $OutputDir.\n"	
-else
-	mkdir "$PWD"/"$OutputDir"
-	mysqldump -u"$MysqlUser" -p"$MysqlPassword" "$RealmDB" > "$PWD"/"$OutputDir"/"$RealmDBOutputFile"
-	mysqldump -u"$MysqlUser" -p"$MysqlPassword" "$CharactersDB" > "$PWD"/"$OutputDir"/"$CharactersDBOutputFile"
-	mysqldump -u"$MysqlUser" -p"$MysqlPassword" "$MangosDB" > "$PWD"/"$OutputDir"/"$MangosDBOutputFile"
-	mysqldump -u"$MysqlUser" -p"$MysqlPassword" "$LogsDB" > "$PWD"/"$OutputDir"/"$LogsDBOutputFile"
-	cd "$PWD"/"$OutputDir" 
-	sha256sum "$RealmDBOutputFile" "$CharactersDBOutputFile" "$MangosDBOutputFile" "$LogsDBOutputFile" > "$OutputName".sha256
-	cd ..
-	chown -R "$LocalUid":"$LocalGid" "$OutputDir"
-	cd "$OutputDir"
-	tar -czf "$OutputName".tar.gz "$RealmDBOutputFile" "$CharactersDBOutputFile" "$MangosDBOutputFile" "$LogsDBOutputFile" "$OutputName".sha256
-	mv "$OutputName".tar.gz ..
-	cd ..
-	rm -r "$PWD"/"$OutputDir"
-fi
-
-# Determine if local organizational directory structure exists.  Copy file if exists.
-if [ "$LocalEnable" = 1 ] ; then
-	if [ -d ""$LocalFileLocation"/"$CurrentMonth""$CurrentYear"" ] ; then
-		echo -e "Backing up "$OutputName".tar.gz to "$LocalFileLocation"\n"
-		chown "$LocalUid":"$LocalGid" "$OutputName".tar.gz
-		cp --preserve "$OutputName".tar.gz "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"
+		echo -e "Cannot backup databases.  Please delete $OutputDir.\n"	
 	else
-		mkdir -p "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"
-		if [ $? = 0 ] ; then
-			echo -e "Created local directory "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"\n"
-			chown "$LocalUid":"$LocalGid" "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"
+		mkdir "$PWD"/"$OutputDir"
+		mysqldump -u"$MysqlUser" -p"$MysqlPassword" "$RealmDB" > "$PWD"/"$OutputDir"/"$RealmDBOutputFile"
+		mysqldump -u"$MysqlUser" -p"$MysqlPassword" "$CharactersDB" > "$PWD"/"$OutputDir"/"$CharactersDBOutputFile"
+		mysqldump -u"$MysqlUser" -p"$MysqlPassword" "$MangosDB" > "$PWD"/"$OutputDir"/"$MangosDBOutputFile"
+		mysqldump -u"$MysqlUser" -p"$MysqlPassword" "$LogsDB" > "$PWD"/"$OutputDir"/"$LogsDBOutputFile"
+		cd "$PWD"/"$OutputDir" 
+		sha256sum "$RealmDBOutputFile" "$CharactersDBOutputFile" "$MangosDBOutputFile" "$LogsDBOutputFile" > "$OutputName".sha256
+		cd ..
+		chown -R "$LocalUid":"$LocalGid" "$OutputDir"
+		cd "$OutputDir"
+		tar -czf "$OutputName".tar.gz "$RealmDBOutputFile" "$CharactersDBOutputFile" "$MangosDBOutputFile" "$LogsDBOutputFile" "$OutputName".sha256
+		mv "$OutputName".tar.gz ..
+		cd ..
+		rm -r "$PWD"/"$OutputDir"
+	fi
+
+	# Determine if local organizational directory structure exists.  Copy file if exists.
+	if [ "$LocalEnable" = 1 ] ; then
+		if [ -d ""$LocalFileLocation"/"$CurrentMonth""$CurrentYear"" ] ; then
+			echo -e "Backing up "$OutputName".tar.gz to "$LocalFileLocation"\n"
 			chown "$LocalUid":"$LocalGid" "$OutputName".tar.gz
 			cp --preserve "$OutputName".tar.gz "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"
 		else
-			echo -e "Could not create local directory.\n"
+			mkdir -p "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"
+			if [ $? = 0 ] ; then
+				echo -e "Created local directory "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"\n"
+				chown "$LocalUid":"$LocalGid" "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"
+				chown "$LocalUid":"$LocalGid" "$OutputName".tar.gz
+				cp --preserve "$OutputName".tar.gz "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"
+			else
+				echo -e "Could not create local directory.\n"
+			fi
 		fi
-	fi
-else
-	echo -e "Local backup disabled.\n"
-fi 
-
-# Determine if NFS organizational directory structure exists.  Copy file if exists.
-if [ "$NFSEnable" = 1 ] ; then
-	if [ -d ""$NFSFileLocation"/"$CurrentMonth""$CurrentYear"" ] ; then
-		echo -e "Backing up "$OutputName".tar.gz to "$NFSFileLocation"\n"
-		chown "$NFSUid":"$NFSGid" "$OutputName".tar.gz
-		cp --preserve "$OutputName".tar.gz "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"
 	else
-		mkdir -p "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"
-		if [ $? = 0 ] ; then
-			echo -e "Created NFS directory "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"\n"
-			chown "$NFSUid":"$NFSGid" "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"
+		echo -e "Local backup disabled.\n"
+	fi 
+
+	# Determine if NFS organizational directory structure exists.  Copy file if exists.
+	if [ "$NFSEnable" = 1 ] ; then
+		if [ -d ""$NFSFileLocation"/"$CurrentMonth""$CurrentYear"" ] ; then
+			echo -e "Backing up "$OutputName".tar.gz to "$NFSFileLocation"\n"
 			chown "$NFSUid":"$NFSGid" "$OutputName".tar.gz
 			cp --preserve "$OutputName".tar.gz "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"
 		else
-			echo -e "Could not create NFS directory.\n"
+			mkdir -p "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"
+			if [ $? = 0 ] ; then
+				echo -e "Created NFS directory "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"\n"
+				chown "$NFSUid":"$NFSGid" "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"
+				chown "$NFSUid":"$NFSGid" "$OutputName".tar.gz
+				cp --preserve "$OutputName".tar.gz "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"
+			else
+				echo -e "Could not create NFS directory.\n"
+			fi
 		fi
+	else
+		echo -e "NFS backup disabled.\n"
 	fi
+
+	# Remove the created file from root
+	rm "$OutputName".tar.gz
+
+	# if mangosd and realmd was running on program start restart them
+	if [ "$RealmdStatus" = "active" ] ; then
+		echo -e "\nStarting realmd."
+		sudo systemctl start realmd.service
+	else
+		echo -e "realmd was not running - not restarting.\n"
+	fi
+
+	if [ "$MangosdStatus" = "active" ] ; then
+		echo -e "Starting mangosd.\n"
+		sudo systemctl start mangosd.service
+	else
+		echo -e "mangosd was not running - not restarting.\n"
+	fi
+
+	# Unmounted the NFS if it is mounted
+	if [ "$NFSIsMounted" = 1 ] ; then
+		echo -e "Unmounting NFS at "$NFSAddress".\n"
+		umount "$NFSLocalMountPath"
+	fi
+
 else
-	echo -e "NFS backup disabled.\n"
-fi
-
-# Remove the created file from root
-rm "$OutputName".tar.gz
-
-# if mangosd and realmd was running on program start restart them
-if [ "$RealmdStatus" = "active" ] ; then
-	echo -e "\nStarting realmd."
-	sudo systemctl start realmd.service
-else
-	echo -e "realmd was not running - not restarting.\n"
-fi
-
-if [ "$MangosdStatus" = "active" ] ; then
-	echo -e "Starting mangosd.\n"
-	sudo systemctl start mangosd.service
-else
-	echo -e "mangosd was not running - not restarting.\n"
-fi
-
-# Unmounted the NFS if it is mounted
-if [ "$NFSIsMounted" = 1 ] ; then
-	echo -e "Unmounting NFS at "$NFSAddress".\n"
-	umount "$NFSLocalMountPath"
+	echo -e "Both Local and NFS backup disabled.\n"
 fi
 
 # Footer Date

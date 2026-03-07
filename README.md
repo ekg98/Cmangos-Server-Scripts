@@ -3,10 +3,6 @@ Cmangos serverside scripts for backing up and running a cmangos server.
 
 These were made for my HP DL380G6 running Ubuntu Server 16.04.5 LTS.  They should work just fine on any linux system that uses systemd. Currently running Debian 13.
 
-# IMPORTANT NOTE #
-These are functional but not perfect.  They do NOT check for hard drive free space.  When your using cron they will keep operating until hard drive is full.  Beforwarned...
-# IMPORTANT NOTE #
-
   //The scripts:
 
 mangosdbbackup - Backup database script that can be executed anywhere.  Uses mysqldump to dump mangos, characters, and realmd databases.  Generates a sha hash and compresses the results into a neat tar.gz archive with, what core it was from, date, and time generated.  Places file where executed.
