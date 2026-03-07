@@ -46,7 +46,7 @@ NFSRemoteMountPath="/Storage"
 NFSLocalMountPath="/mnt/bakhard"
 NFSFileLocation="/mnt/bakhard/TbcBak/DB"
 NFSUid="1000"
-NFSGid="1000"
+NFSGid="100"
 
 # Local Storage Configuration
 # LocalEnable		Turns Local backup on or off. 1 or 0
@@ -55,7 +55,7 @@ NFSGid="1000"
 # LocalUid		Local User ID
 # LocalGid		Local Group ID
 LocalEnable="1"
-LocalSpaceLimit="20000000"
+LocalSpaceLimit="10000000"
 LocalFileLocation="/home/mangostbc/DB"
 LocalUid="1000"
 LocalGid="1000"
@@ -91,17 +91,17 @@ if [ "$LocalEnable" = 1 ] || [ "$NFSEnable" = 1 ] ; then
 	if [ "$NFSEnable" = 1 ] ; then
 		ping -q -w 10 "$NFSAddress"
 		if [ $? != 0 ] ; then
-			echo -e "Server at "$NFSAddress" unreachable...\n"
+			echo -e "\nServer at "$NFSAddress" unreachable..."
 			NFSIsMounted="0"
 		else
-			echo -e "Possible NFS found at "$NFSAddress".  Connecting...\n"
+			echo -e "\nPossible NFS found at "$NFSAddress" connecting..."
 			mount "$NFSAddress":"$NFSRemoteMountPath" "$NFSLocalMountPath"
 	
 			if [ $? != 0 ] ; then
-				echo -e "Cannot mount NFS at "$NFSAddress".  Check script config or server connection.\n"
+				echo -e "Cannot mount NFS at "$NFSAddress" check script config or server connection."
 				NFSIsMounted="0"
 			else
-				echo -e "NFS at "$NFSAddress" mounted locally at "$NFSLocalMountPath".\n" 
+				echo -e "NFS at "$NFSAddress" mounted locally at "$NFSLocalMountPath"" 
 				NFSIsMounted="1"
 			fi
 		fi
@@ -121,34 +121,34 @@ if [ "$LocalEnable" = 1 ] || [ "$NFSEnable" = 1 ] ; then
 
 	# Check NFS free space vs the limit
 	if [ "$NFSEnable" = 1 ] ; then
-		echo -e "NFS free space: $NFSFreeSpace\tNFS space limit: $NFSSpaceLimit\n"
+		echo -e "NFS free space: $NFSFreeSpace\tNFS space limit: $NFSSpaceLimit"
 		if (( NFSFreeSpace <= NFSSpaceLimit )) ; then
 			NFSEnable="0"
-			echo -e "NFS free space limit reached.  Please free more space for backup.\n"
+			echo -e "NFS free space limit reached.  Please free more space for backup."
 		fi
 	fi
 	# Check Local free space vs the limit
 	if [ "$LocalEnable" = 1 ] ; then
-		echo -e "Local free space: $LocalFreeSpace\tLocal space limit: $LocalSpaceLimit\n"
+		echo -e "Local free space: $LocalFreeSpace\tLocal space limit: $LocalSpaceLimit"
 		if (( LocalFreeSpace <= LocalSpaceLimit )) ; then
 			LocalEnable="0"
-			echo -e "Local free space limit reached.  Please free more space for backup.\n"
+			echo -e "Local free space limit reached.  Please free more space for backup."
 		fi
 	fi
 
 	# Determine if server is shutdown
 	if [ "$MangosdStatus" = "active" ] ; then
-		echo -e "\nStopping mangosd"
+		echo -e "\nStopping mangosd.service"
 		sudo systemctl stop mangosd.service
 	fi
 
 	if [ "$RealmdStatus" = "active" ] ; then
-		echo -e "Stopping realmd\n"
+		echo -e "Stopping realmd.service\n"
 		sudo systemctl stop realmd.service
 	fi
 
 	# Create a temporary directory to dump databases into then dump them.
-	echo -e "Backing up $RealmDB, $CharactersDB, $MangosDB, and $LogsDB.\n"
+	echo -e "Backing up $RealmDB, $CharactersDB, $MangosDB, and $LogsDB."
 
 	# Change Directory
 	cd "$DBBuildLocation"
@@ -157,7 +157,7 @@ if [ "$LocalEnable" = 1 ] || [ "$NFSEnable" = 1 ] ; then
 	# Create the backup tar
 	if [ -d ""$PWD"/"$OutputDir"" ] ; then
 
-		echo -e "Cannot backup databases.  Please delete $OutputDir.\n"	
+		echo -e "Cannot backup databases.  Please delete $OutputDir"	
 	else
 		mkdir "$PWD"/"$OutputDir"
 		mysqldump -u"$MysqlUser" -p"$MysqlPassword" "$RealmDB" > "$PWD"/"$OutputDir"/"$RealmDBOutputFile"
@@ -178,43 +178,43 @@ if [ "$LocalEnable" = 1 ] || [ "$NFSEnable" = 1 ] ; then
 	# Determine if local organizational directory structure exists.  Copy file if exists.
 	if [ "$LocalEnable" = 1 ] ; then
 		if [ -d ""$LocalFileLocation"/"$CurrentMonth""$CurrentYear"" ] ; then
-			echo -e "Backing up "$OutputName".tar.gz to "$LocalFileLocation"\n"
+			echo -e "Backing up "$OutputName".tar.gz to "$LocalFileLocation""
 			chown "$LocalUid":"$LocalGid" "$OutputName".tar.gz
 			cp --preserve "$OutputName".tar.gz "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"
 		else
 			mkdir -p "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"
 			if [ $? = 0 ] ; then
-				echo -e "Created local directory "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"\n"
+				echo -e "Created local directory "$LocalFileLocation"/"$CurrentMonth""$CurrentYear""
 				chown "$LocalUid":"$LocalGid" "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"
 				chown "$LocalUid":"$LocalGid" "$OutputName".tar.gz
 				cp --preserve "$OutputName".tar.gz "$LocalFileLocation"/"$CurrentMonth""$CurrentYear"
 			else
-				echo -e "Could not create local directory.\n"
+				echo -e "Could not create local directory."
 			fi
 		fi
 	else
-		echo -e "Local backup disabled.\n"
+		echo -e "Local backup disabled."
 	fi 
 
 	# Determine if NFS organizational directory structure exists.  Copy file if exists.
 	if [ "$NFSEnable" = 1 ] ; then
 		if [ -d ""$NFSFileLocation"/"$CurrentMonth""$CurrentYear"" ] ; then
-			echo -e "Backing up "$OutputName".tar.gz to "$NFSFileLocation"\n"
+			echo -e "Backing up "$OutputName".tar.gz to "$NFSFileLocation""
 			chown "$NFSUid":"$NFSGid" "$OutputName".tar.gz
 			cp --preserve "$OutputName".tar.gz "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"
 		else
 			mkdir -p "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"
 			if [ $? = 0 ] ; then
-				echo -e "Created NFS directory "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"\n"
+				echo -e "Created NFS directory "$NFSFileLocation"/"$CurrentMonth""$CurrentYear""
 				chown "$NFSUid":"$NFSGid" "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"
 				chown "$NFSUid":"$NFSGid" "$OutputName".tar.gz
 				cp --preserve "$OutputName".tar.gz "$NFSFileLocation"/"$CurrentMonth""$CurrentYear"
 			else
-				echo -e "Could not create NFS directory.\n"
+				echo -e "Could not create NFS directory."
 			fi
 		fi
 	else
-		echo -e "NFS backup disabled.\n"
+		echo -e "NFS backup disabled."
 	fi
 
 	# Remove the created file from root
@@ -222,14 +222,14 @@ if [ "$LocalEnable" = 1 ] || [ "$NFSEnable" = 1 ] ; then
 
 	# if mangosd and realmd was running on program start restart them
 	if [ "$RealmdStatus" = "active" ] ; then
-		echo -e "\nStarting realmd."
+		echo -e "\nStarting realmd.service"
 		sudo systemctl start realmd.service
 	else
 		echo -e "realmd was not running - not restarting.\n"
 	fi
 
 	if [ "$MangosdStatus" = "active" ] ; then
-		echo -e "Starting mangosd.\n"
+		echo -e "Starting mangosd.service\n"
 		sudo systemctl start mangosd.service
 	else
 		echo -e "mangosd was not running - not restarting.\n"
@@ -237,12 +237,12 @@ if [ "$LocalEnable" = 1 ] || [ "$NFSEnable" = 1 ] ; then
 
 	# Unmounted the NFS if it is mounted
 	if [ "$NFSIsMounted" = 1 ] ; then
-		echo -e "Unmounting NFS at "$NFSAddress".\n"
+		echo -e "Unmounting NFS at "$NFSAddress""
 		umount "$NFSLocalMountPath"
 	fi
 
 else
-	echo -e "Both Local and NFS backup disabled.\n"
+	echo -e "Both Local and NFS backup disabled."
 fi
 
 # Footer Date
