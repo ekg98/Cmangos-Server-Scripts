@@ -246,4 +246,4 @@ else
 fi
 
 # Footer Date
-echo -e "End: "$CurrentDay""$CurrentMonth""$CurrentYear" "$CurrentTime"\n"
+echo -e "\nEnd: "$CurrentDay""$CurrentMonth""$CurrentYear" "$CurrentTime"\n"
